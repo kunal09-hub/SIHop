@@ -210,6 +210,37 @@ CREATE TABLE IF NOT EXISTS public.audit_trail (
     created_at TIMESTAMPTZ DEFAULT NOW()
 );
 
+-- 13. CONTRACTORS TABLE
+CREATE TABLE IF NOT EXISTS public.contractors (
+    contractor_id TEXT PRIMARY KEY,
+    company_name TEXT NOT NULL,
+    license_number TEXT NOT NULL,
+    specialization TEXT,
+    active_workers INT DEFAULT 0,
+    compliance_score INT DEFAULT 85,
+    risk_level TEXT DEFAULT 'LOW',
+    total_incidents INT DEFAULT 0,
+    mine_id TEXT REFERENCES public.mines(mine_id),
+    created_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+-- 14. ENVIRONMENTAL READINGS TABLE
+CREATE TABLE IF NOT EXISTS public.environmental_readings (
+    reading_id TEXT PRIMARY KEY,
+    mine_id TEXT NOT NULL REFERENCES public.mines(mine_id),
+    mine_name TEXT,
+    zone_id TEXT REFERENCES public.zones(zone_id),
+    zone_name TEXT,
+    area TEXT,
+    methane_level NUMERIC DEFAULT 0.25, -- CH4 %vol
+    dust_concentration NUMERIC DEFAULT 1.2, -- mg/m3
+    carbon_monoxide NUMERIC DEFAULT 12.0, -- CO ppm
+    temperature NUMERIC DEFAULT 26.5, -- Celsius
+    status TEXT DEFAULT 'NORMAL',
+    recorded_at TIMESTAMPTZ DEFAULT NOW(),
+    created_at TIMESTAMPTZ DEFAULT NOW()
+);
+
 -- ENABLE ROW LEVEL SECURITY ON ALL TABLES
 ALTER TABLE public.mines ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.zones ENABLE ROW LEVEL SECURITY;
@@ -223,6 +254,8 @@ ALTER TABLE public.alerts ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.sos_alerts ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.file_references ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.audit_trail ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.contractors ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.environmental_readings ENABLE ROW LEVEL SECURITY;
 
 -- CREATE RLS POLICIES FOR DEMO PROTOTYPE COMPATIBILITY
 DO $$ 
@@ -244,16 +277,22 @@ BEGIN
     END LOOP;
 END $$;
 
--- ENABLE SUPABASE REALTIME FOR SOS ALERTS
+-- ENABLE SUPABASE REALTIME FOR ALL CORE TABLES
 DO $$
+DECLARE
+    t TEXT;
+    target_tables TEXT[] := ARRAY['sos_alerts', 'violations', 'inspections', 'corrective_actions', 'certificates', 'alerts', 'mines', 'workers', 'file_references', 'audit_trail', 'contractors', 'environmental_readings'];
 BEGIN
-    IF NOT EXISTS (
-        SELECT 1 FROM pg_publication_tables 
-        WHERE pubname = 'supabase_realtime' AND tablename = 'sos_alerts'
-    ) THEN
-        ALTER PUBLICATION supabase_realtime ADD TABLE public.sos_alerts;
-    END IF;
+    FOREACH t IN ARRAY target_tables LOOP
+        IF NOT EXISTS (
+            SELECT 1 FROM pg_publication_tables 
+            WHERE pubname = 'supabase_realtime' AND tablename = t
+        ) THEN
+            EXECUTE format('ALTER PUBLICATION supabase_realtime ADD TABLE public.%I', t);
+        END IF;
+    END LOOP;
 END $$;
+
 
 -- SEED DATA INSERTIONS (IDEMPOTENT VIA ON CONFLICT DO UPDATE)
 
